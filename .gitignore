@@ -5,3 +5,4 @@ dist/
 .vite/
 .wrangler/
 .dev.vars
+server/build.ts

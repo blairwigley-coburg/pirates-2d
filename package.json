@@ -10,10 +10,11 @@
     "bench": "esbuild scripts/bench.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/bench.mjs --log-level=error && node node_modules/.cache/bench.mjs",
     "sheet": "esbuild scripts/buildSheet.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/buildSheet.mjs --log-level=error \"--external:node:*\" && node node_modules/.cache/buildSheet.mjs docs/sprite-sheet.svg",
     "arena": "esbuild scripts/arenaTest.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/arena.mjs --log-level=error && node node_modules/.cache/arena.mjs",
-    "build:sea": "tsc --noEmit && tsc --noEmit -p server/tsconfig.json && npm run sheet && vite build --base=/ --mode sea",
+    "build:sea": "npm run stamp && tsc --noEmit && tsc --noEmit -p server/tsconfig.json && npm run sheet && vite build --base=/ --mode sea",
     "sea": "wrangler dev --port 8787",
     "db:local": "wrangler d1 migrations apply pirates-2d --local",
-    "deploy": "npm run build:sea && wrangler d1 migrations apply pirates-2d --remote && wrangler deploy"
+    "deploy": "npm run build:sea && wrangler d1 migrations apply pirates-2d --remote && wrangler deploy",
+    "stamp": "node -e \"require('fs').writeFileSync('server/build.ts', '// Written by npm run stamp. Not committed.\\nexport const BUILD = ' + JSON.stringify(String(Date.now())) + '\\n')\""
   },
   "dependencies": {
     "@fontsource/pirata-one": "5.3.0",

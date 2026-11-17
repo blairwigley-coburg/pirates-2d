@@ -1,4 +1,5 @@
 import { AuthError, bearer, login, logout, register, userForToken } from './auth'
+import { BUILD } from './build'
 export { Sea } from './sea'
 
 /**
@@ -62,8 +63,16 @@ export default {
           const headers = new Headers({ Upgrade: 'websocket' })
           headers.set('X-User-Id', String(user.id))
           headers.set('X-User-Name', user.username)
-          const sea = env.SEA.get(env.SEA.idFromName('open-sea'))
-          return sea.fetch(new Request('https://sea/connect', { headers }))
+          headers.set('X-Build', BUILD)
+          // Renamed once, when the build check below arrived: the sea that was
+          // running then could not know to step aside for newer code.
+          const sea = env.SEA.get(env.SEA.idFromName('the-open-sea'))
+          try {
+            return await sea.fetch(new Request('https://sea/connect', { headers }))
+          } catch {
+            // The sea was older than this Worker and has just reset itself; the browser retries.
+            return json({ error: 'The sea is being refitted. Try again in a moment.' }, 503)
+          }
         }
       }
       if (url.pathname.startsWith('/api/')) return json({ error: 'Not found.' }, 404)

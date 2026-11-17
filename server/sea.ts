@@ -5,6 +5,7 @@ import {
   type BoardRow, type ChatMessage, type MissionSnap, type ClientMessage, type ServerMessage, type ShipSnap,
 } from '../src/net/protocol'
 import type { Env } from './worker'
+import { BUILD } from './build'
 
 /** The sim's own rate. Stepped in batches, one batch per snapshot. */
 const SIM_HZ = 120
@@ -45,6 +46,18 @@ export class Sea extends DurableObject<Env> {
   private recorded = new Map<number, number>()
 
   override async fetch(request: Request): Promise<Response> {
+    // A connection sent by a newer Worker means this sea is running old code:
+    // a live sea never idles, so it would otherwise go on serving the old
+    // rules until everyone happened to leave at once. Tell everyone, close
+    // up, and reset; the browsers reconnect to the new code a moment later.
+    const build = request.headers.get('X-Build')
+    if (build && build !== BUILD) {
+      this.broadcast({ t: 'chat', msg: { id: this.systemId--, name: '', body: 'The sea is being refitted — back in a moment', at: Date.now(), system: true } })
+      for (const ws of this.sessions.keys()) {
+        try { ws.close(1012, 'refit') } catch { /* already gone */ }
+      }
+      this.ctx.abort('newer build')
+    }
     const userId = Number(request.headers.get('X-User-Id'))
     const name = request.headers.get('X-User-Name') ?? ''
     if (!userId || !name) return new Response('Who are you?', { status: 400 })
