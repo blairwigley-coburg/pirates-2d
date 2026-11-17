@@ -306,6 +306,8 @@ export function stepProjectiles(
   terrain: Terrain,
   dt: number,
   events: CombatEvents,
+  /** True when shot from `ownerId` should pass harmlessly by `victim`: an ally on the open sea. */
+  spares?: (ownerId: number, victim: Ship) => boolean,
 ): Projectile[] {
   const alive: Projectile[] = []
 
@@ -333,6 +335,7 @@ export function stepProjectiles(
       // Only shot from the other side does damage; a melee between enemies
       // should not dissolve into friendly fire.
       if (ship.faction === p.ownerFaction) continue
+      if (spares?.(p.ownerId, ship)) continue
       const radius = HIT_RADIUS * ship.cls.scale
       if (Math.hypot(ship.pos.x - p.pos.x, ship.pos.y - p.pos.y) > radius) continue
 

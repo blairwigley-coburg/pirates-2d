@@ -46,9 +46,9 @@ export default {
         }
         case 'GET /api/leaderboard': {
           const { results } = await env.DB.prepare(
-            `SELECT users.username AS name, stats.sinkings, stats.deaths, stats.best_plunder AS bestPlunder
+            `SELECT users.username AS name, stats.renown, stats.sinkings, stats.deaths, stats.best_plunder AS bestPlunder
              FROM stats JOIN users ON users.id = stats.user_id
-             ORDER BY stats.sinkings DESC, stats.best_plunder DESC LIMIT 20`,
+             ORDER BY stats.renown DESC, stats.sinkings DESC, stats.best_plunder DESC LIMIT 20`,
           ).all()
           return json({ rows: results })
         }

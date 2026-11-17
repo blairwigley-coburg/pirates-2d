@@ -7,7 +7,8 @@
  * step with this one.
  */
 import type { WindState } from '../sim/wind'
-import type { ArenaEvent } from '../sim/arena'
+import type { ArenaEvent, ShipKind } from '../sim/arena'
+import type { MissionKind, MissionState } from '../sim/missions'
 
 /** Snapshots per second. The simulation itself runs at 120 Hz on the server. */
 export const SNAPSHOT_HZ = 20
@@ -67,6 +68,42 @@ export interface ShipSnap {
   rl: [number, number]
   aw: number
   pm: number
+  /** Whose she is: a captain's, or one of the hulls a mission brought. */
+  f: ShipKind
+  /** An AI hull's name ("Raider", a bounty's). Captains are named by the board. */
+  n?: string
+}
+
+/** A mission as the browsers see it. Sent with the board, once a second. */
+export interface MissionSnap {
+  id: number
+  kind: MissionKind
+  title: string
+  state: MissionState
+  /** Where it is, for the chart and the arrows; null once it has nothing afloat. */
+  at: { x: number; y: number } | null
+  need: number
+  /** Captains who have signed on by sailing into it. */
+  crew: number[]
+  /** Bounty: how many of them are on her now. */
+  engaged: number
+  progress: number
+  left: number
+  reward: number
+  renown: number
+}
+
+/** A settlement: where it is, which way its land lies, and how its walls stand. */
+export interface SettlementSnap {
+  id: number
+  name: string
+  x: number
+  y: number
+  land: number
+  walls: number
+  burning: boolean
+  /** Seconds until it is rebuilt, while burning. */
+  rebuild: number
 }
 
 /** A thing that happened at a moment, played back when the view reaches that moment. */
@@ -90,6 +127,7 @@ export interface BoardRow {
   plunder: number
   sinkings: number
   deaths: number
+  renown: number
 }
 
 export type ServerMessage =
@@ -111,10 +149,11 @@ export type ServerMessage =
     ships: ShipSnap[]
     /** Floating plunder: x, y, life left as a fraction, drawn-in flag. */
     plunder: [number, number, number, 0 | 1][]
+    settlements: SettlementSnap[]
     events: SeaEvent[]
     you: YouSnap
   }
-  | { t: 'board'; rows: BoardRow[] }
+  | { t: 'board'; rows: BoardRow[]; missions: MissionSnap[] }
   | { t: 'error'; message: string }
 
 /** Two decimals is a hundredth of a pixel, far below anything visible. */

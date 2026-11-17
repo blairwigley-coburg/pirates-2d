@@ -116,7 +116,9 @@ function signedIn(deps: SeaPageDeps): HTMLElement {
   page.appendChild(who)
   page.appendChild(el('div', `font-size:14px; color:${M.dim}; text-align:center; max-width:640px; line-height:1.5`,
     'Every hull is yours to take, as she comes from the yard: no refits, no cards. ' +
-    'Sink a ship to spill half her hold; you are raised again a few seconds after you go down.'))
+    'Sink a ship to spill half her hold; you are raised again a few seconds after you go down. ' +
+    'Bounties, escorts and raids on the two towns pay plunder and renown: sail into one to join its crew, ' +
+    'and its crew are allies until it is done.'))
 
   const yard = el('div', 'display:flex; gap:12px; flex-wrap:wrap; justify-content:center')
   for (const cls of ARENA_CLASSES) yard.appendChild(hullCard(cls, () => deps.sail(cls), link === 'open'))
@@ -124,16 +126,17 @@ function signedIn(deps: SeaPageDeps): HTMLElement {
 
   const board = el('div', `${cardCss()} color:${INK}; width:min(520px, 100%); box-sizing:border-box; padding:16px 20px`)
   board.appendChild(el('div', `font-family:${headingFamily()}; font-size:22px; margin-bottom:8px`, 'Most feared'))
-  const table = el('div', 'display:grid; grid-template-columns: 1fr auto auto auto; gap:4px 16px; font-size:14px')
+  const table = el('div', 'display:grid; grid-template-columns: 1fr auto auto auto auto; gap:4px 16px; font-size:14px')
   table.appendChild(el('div', `color:${DIM}`, 'Loading…'))
   board.appendChild(table)
   page.appendChild(board)
   deps.accounts.leaderboard().then((rows) => {
     table.innerHTML = ''
     if (rows.length === 0) { table.appendChild(el('div', `color:${DIM}`, 'Nobody has sunk anybody yet.')); return }
-    for (const head of ['Captain', 'Sunk', 'Lost', 'Best haul']) table.appendChild(el('div', `color:${ui().rubric}; letter-spacing:1px`, head))
+    for (const head of ['Captain', 'Renown', 'Sunk', 'Lost', 'Best haul']) table.appendChild(el('div', `color:${ui().rubric}; letter-spacing:1px`, head))
     for (const row of rows) {
       table.appendChild(el('div', row.name === account.username ? 'font-weight:bold' : '', row.name))
+      table.appendChild(el('div', 'text-align:right; font-weight:bold', String(row.renown ?? 0)))
       table.appendChild(el('div', 'text-align:right', String(row.sinkings)))
       table.appendChild(el('div', 'text-align:right', String(row.deaths)))
       table.appendChild(el('div', 'text-align:right', String(Math.round(row.bestPlunder))))

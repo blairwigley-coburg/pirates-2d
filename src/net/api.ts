@@ -15,7 +15,7 @@ const TOKEN_KEY = 'pirates2d.token'
 
 export interface Account { id: number; username: string }
 
-export interface LeaderRow { name: string; sinkings: number; deaths: number; bestPlunder: number }
+export interface LeaderRow { name: string; renown: number; sinkings: number; deaths: number; bestPlunder: number }
 
 function readToken(): string | null {
   try { return localStorage.getItem(TOKEN_KEY) } catch { return null }

@@ -15,6 +15,7 @@ import { PlunderView } from './render/plunderView'
 import { TerrainView } from './render/terrainView'
 import { SquallView } from './render/squallView'
 import { GullView } from './render/gullView'
+import { SettlementView } from './render/settlementView'
 import { P, PALETTES, paletteFromLocation, setPalette } from './render/palette'
 import { HULL_STYLES, hullStyleFromLocation } from './render/hullStyle'
 import { DraftUI } from './ui/draft'
@@ -86,11 +87,12 @@ async function main() {
   const terrainView = new TerrainView()
   const squallView = new SquallView()
   const gulls = new GullView()
+  const towns = new SettlementView()
   // Land sits on the water; the shadow of a squall falls across both. Wake
   // above that so a ship's trail is never buried, then plunder, hulls, shot
   // and smoke — and the rain last of all, thin enough to see through.
   worldLayer.addChild(
-    terrainView.view, squallView.shadow, wake.view, plunderView.view,
+    terrainView.view, towns.view, squallView.shadow, wake.view, plunderView.view,
     shipLayer, combat.view, squallView.rain, gulls.view,
   )
   app.stage.addChild(water.view, worldLayer)
@@ -168,6 +170,7 @@ async function main() {
     terrainView.clear()
     squallView.clear()
     gulls.clear()
+    towns.clear()
     pickupText.clear()
     audioDirector.reset()
   }
@@ -423,6 +426,7 @@ async function main() {
     water.update(camera, cameraWind, frameDt)
     water.updateGusts(camera, (q) => sea!.windAt(q), frameDt)
     terrainView.update(sea.terrain, camera)
+    towns.update(sea.settlements, sea.terrain, cameraWind, dt)
     gulls.update(camera, dt)
     wake.update(sea.ships, dt)
     syncShipViews(sea.ships, dt, 1)

@@ -55,6 +55,10 @@ In the Cloudflare build, the port has an **Open sea** tab. Sign in with a name a
 PIN (no email, no reset), pick any hull, and every other ship out there is another captain.
 There's one chat channel for everyone signed in: press Enter at sea, or / anywhere. R makes port.
 
+There's work at sea too: bounties (some take several captains to bring down), merchants to
+escort between the two towns, and raids on those towns to beat off. Sail into one to join its
+crew; crewmates are allies until it's done. It pays plunder, and renown on the leaderboard.
+
 How it works, running it locally and deploying it are covered in
 [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md).
 

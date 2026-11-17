@@ -1,8 +1,8 @@
 import { DurableObject } from 'cloudflare:workers'
-import { ArenaWorld, arenaClass, type Captain } from '../src/sim/arena'
+import { ArenaWorld, captainClass, type Captain } from '../src/sim/arena'
 import {
   CHAT_HISTORY, CHAT_MAX, SEA_CAPACITY, SNAPSHOT_HZ, r2,
-  type BoardRow, type ChatMessage, type ClientMessage, type ServerMessage, type ShipSnap,
+  type BoardRow, type ChatMessage, type MissionSnap, type ClientMessage, type ServerMessage, type ShipSnap,
 } from '../src/net/protocol'
 import type { Env } from './worker'
 
@@ -92,7 +92,7 @@ export class Sea extends DurableObject<Env> {
           this.send(ws, { t: 'error', message: `The sea is full (${SEA_CAPACITY} ships). Try again shortly.` })
           return
         }
-        this.arena.join(session.userId, session.name, arenaClass(String(msg.hull)))
+        this.arena.join(session.userId, session.name, captainClass(String(msg.hull)))
         if (!already) this.announce(`${session.name} has put to sea`)
         this.sendBoard()
         return
@@ -191,11 +191,15 @@ export class Sea extends DurableObject<Env> {
 
     const events = this.arena.drainEvents()
     for (const e of events) {
-      if (e.k !== 'sunk') continue
-      const victim = this.arena.captains.get(e.captain)
-      const by = this.arena.captains.get(e.by)
-      this.announce(by && victim ? `${by.name} sank ${victim.name}` : `${victim?.name ?? 'A ship'} went down`)
-      void this.recordSinking(e.by, e.captain)
+      if (e.k === 'news') this.announce(e.text)
+      else if (e.k === 'reward') void this.recordRenown(e.captain, e.renown)
+      else if (e.k === 'sunk') {
+        const victim = this.arena.captains.get(e.captain)
+        const by = this.arena.captains.get(e.by)
+        // A raider going down is not news; a captain going down is.
+        if (victim) this.announce(by ? `${by.name} sank ${victim.name}` : `${victim.name} went down`)
+        if (e.by || e.captain) void this.recordSinking(e.by, e.captain)
+      }
     }
 
     this.broadcastSnapshot(events)
@@ -217,7 +221,7 @@ export class Sea extends DurableObject<Env> {
     const ships: ShipSnap[] = []
     for (const s of arena.ships) {
       ships.push({
-        id: s.id, c: arena.captainOf(s)?.id ?? 0, k: s.cls.id,
+        id: s.id, c: arena.captainOf(s)?.id ?? 0, k: s.cls.id, f: arena.kindOf(s), n: arena.nameOf(s),
         x: r2(s.pos.x), y: r2(s.pos.y), vx: r2(s.vel.x), vy: r2(s.vel.y),
         h: r2(s.heading), hl: r2(s.heel), r: r2(s.rudder),
         so: s.sailOrder, cv: r2(s.canvas),
@@ -232,13 +236,17 @@ export class Sea extends DurableObject<Env> {
     }
     const plunder = arena.plunder.map((p) =>
       [r2(p.pos.x), r2(p.pos.y), r2(p.life / p.maxLife), p.drawn ? 1 : 0] as [number, number, number, 0 | 1])
+    const settlements = arena.settlements.map((s) => ({
+      id: s.id, name: s.name, x: r2(s.pos.x), y: r2(s.pos.y), land: r2(s.land),
+      walls: r2(s.walls.hull), burning: s.state === 'burning', rebuild: Math.ceil(s.rebuild),
+    }))
     const wind = arena.wind.state
     const time = arena.time
 
     for (const [ws, session] of this.sessions) {
       const captain = arena.captains.get(session.userId)
       this.send(ws, {
-        t: 'snap', time, wind, ships, plunder, events,
+        t: 'snap', time, wind, ships, plunder, settlements, events,
         you: {
           ship: captain?.ship && !captain.ship.sunk ? captain.ship.id : null,
           respawn: captain ? r2(captain.respawn) : 0,
@@ -254,10 +262,21 @@ export class Sea extends DurableObject<Env> {
     const rows: BoardRow[] = [...this.arena.captains.values()]
       .map((c) => ({
         id: c.id, name: c.name, hull: c.cls.name,
-        plunder: r2(c.plunder), sinkings: c.sinkings, deaths: c.deaths,
+        plunder: r2(c.plunder), sinkings: c.sinkings, deaths: c.deaths, renown: c.renown,
       }))
-      .sort((a, b) => b.sinkings - a.sinkings || b.plunder - a.plunder)
-    this.broadcast({ t: 'board', rows })
+      .sort((a, b) => b.renown - a.renown || b.sinkings - a.sinkings || b.plunder - a.plunder)
+    const board = this.arena.board
+    const missions: MissionSnap[] = board.missions.map((m) => {
+      const at = board.objective(m)
+      return {
+        id: m.id, kind: m.kind, title: m.title, state: m.state,
+        at: at ? { x: r2(at.x), y: r2(at.y) } : null,
+        need: m.need, crew: [...m.crew], engaged: m.engaged,
+        progress: r2(board.progress(m)), left: Math.max(0, Math.ceil(m.left)),
+        reward: m.reward, renown: m.renown,
+      }
+    })
+    this.broadcast({ t: 'board', rows, missions })
   }
 
   // --- Lifetime records ------------------------------------------------------------
@@ -278,6 +297,14 @@ export class Sea extends DurableObject<Env> {
       ).bind(victim))
     }
     if (statements.length) await db.batch(statements).catch((err) => console.error('stats', err))
+  }
+
+  private async recordRenown(captain: number, renown: number) {
+    if (!captain || renown <= 0) return
+    await this.env.DB.prepare(
+      `INSERT INTO stats (user_id, renown) VALUES (?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET renown = renown + excluded.renown`,
+    ).bind(captain, renown).run().catch((err) => console.error('renown', err))
   }
 
   /** Write a captain's haul if it is the best she has had. */

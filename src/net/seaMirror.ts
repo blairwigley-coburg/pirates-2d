@@ -6,7 +6,9 @@ import { angleDiff, type Vec2 } from '../core/math'
 import type { Projectile, Splash } from '../sim/combat'
 import type { Pickup, Plunder } from '../sim/plunder'
 import type { WindState } from '../sim/wind'
-import type { BoardRow, SeaEvent, ServerMessage, ShipSnap, YouSnap } from './protocol'
+import type {
+  BoardRow, MissionSnap, SeaEvent, ServerMessage, SettlementSnap, ShipSnap, YouSnap,
+} from './protocol'
 
 /**
  * How far behind the server the view runs. Two snapshots' worth, so there is
@@ -39,6 +41,10 @@ export class SeaMirror {
   plunder: Plunder[] = []
   you: YouSnap = { ship: null, respawn: 0, plunder: 0, sinkings: 0, deaths: 0 }
   board: BoardRow[] = []
+  missions: MissionSnap[] = []
+  settlements: SettlementSnap[] = []
+  /** AI hulls' names, by ship id. */
+  readonly shipNames = new Map<number, string>()
   /** Captain names by user id, for the tags over the hulls. */
   readonly names = new Map<number, string>()
   /** Which captain sails each hull, by ship id. */
@@ -74,8 +80,24 @@ export class SeaMirror {
   /** This captain's hull: afloat, going down, or the last one she had while she waits to be raised. */
   get player(): Ship { return this.lastPlayer }
 
-  /** Every other captain's hull still in the fight. */
-  get enemies(): Ship[] { return this.ships.filter((s) => s.faction !== 'player' && !s.sunk) }
+  /** Every hull still in the fight that this captain's guns would lay on. */
+  get enemies(): Ship[] { return this.ships.filter((s) => s.faction === 'rival' && !s.sunk) }
+
+  /** Missions this captain is crew on, still running. */
+  get mine(): MissionSnap[] {
+    return this.missions.filter((m) => m.state === 'active' && m.crew.includes(this.me))
+  }
+
+  /** Whether another captain shares a mission with this one, and so is a friend for now. */
+  allied(captain: number): boolean {
+    return this.mine.some((m) => m.crew.includes(captain))
+  }
+
+  /** What to call a hull: her captain, or her name if a mission brought her. */
+  nameOf(ship: Ship): string {
+    const captain = this.captainOf.get(ship.id) ?? 0
+    return captain ? this.names.get(captain) ?? '?' : this.shipNames.get(ship.id) ?? ship.cls.name
+  }
 
   /** Whether this captain has a hull on the water right now. */
   get afloat() { return this.you.ship !== null && !this.lastPlayer.sunk }
@@ -94,8 +116,10 @@ export class SeaMirror {
       this.snaps.push(msg)
       this.queue.push(...msg.events)
       this.you = msg.you
+      this.settlements = msg.settlements
     } else if (msg.t === 'board') {
       this.board = msg.rows
+      this.missions = msg.missions
       for (const row of msg.rows) this.names.set(row.id, row.name)
     }
   }
@@ -145,7 +169,8 @@ export class SeaMirror {
         if (sa.c === this.me) this.raised++
       }
       this.captainOf.set(sa.id, sa.c)
-      ship.faction = sa.c === this.me ? 'player' : 'rival'
+      if (sa.n) this.shipNames.set(sa.id, sa.n)
+      ship.faction = this.factionFor(sa)
       write(ship, sa, sb, f)
       present.add(sa.id)
       ships.push(ship)
@@ -156,8 +181,26 @@ export class SeaMirror {
       if (present.has(id)) continue
       this.byId.delete(id)
       this.captainOf.delete(id)
+      this.shipNames.delete(id)
     }
     this.ships = ships
+  }
+
+  /**
+   * How this captain should see a hull. The server decides who may shoot
+   * whom; this only has to agree with it well enough to colour a name and
+   * pick which hulls get the gun arcs and markers.
+   */
+  private factionFor(s: ShipSnap): string {
+    switch (s.f) {
+      case 'captain':
+        if (s.c === this.me) return 'player'
+        return this.allied(s.c) ? 'ally' : 'rival'
+      case 'convoy':
+        return this.mine.some((m) => m.kind === 'escort') ? 'ally' : 'neutral'
+      default:
+        return 'rival'
+    }
   }
 
   private placePlunder(a: Snap) {

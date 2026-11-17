@@ -49,6 +49,52 @@ One Cloudflare Worker serves the built game as static assets, the `/api` routes 
   away from everyone.
 - The chart (Windward Cays) has edges, and the sea holds 16 ships.
 - Squalls are off: they form around *the* player, which has no meaning here.
+- Bounties, escorts and town raids give captains reasons to work together; see *Missions*.
+
+## Missions
+
+`src/sim/missions.ts` holds the rules. `ArenaWorld` owns the hulls and calls in through
+`MissionHost`. While anyone is at sea, the sea keeps up to one of each kind going, staggered on
+timers, and announces each start and end in chat.
+
+- **Joining is by sailing in.** A captain afloat within about 900 px of a mission's objective
+  (1,300 px around a town being raided) joins its **crew** and stays on until it ends.
+- **Crews are allies.** Crewmates' guns never lay on each other, and a stray ball between them
+  does no harm (`stepProjectiles`' `spares` hook). Everyone else is still fair game. Name tags
+  turn green for allies.
+- **Bounty.** A named enemy-class hull (Brigantine, Frigate, Galleon or Man-o'-War) posted as
+  needing 1–4 captains, never more than are at sea.
+  - **Team-up enforcement:** every step her `mods.armour` is set to `need / engaged`, where
+    `engaged` is crew within 900 px. One captain on a 3-captain bounty does a third of the
+    damage; three do full damage.
+  - She escapes after 5 minutes.
+- **Escort.** A merchant (Fluyt) leaves one town for the other, sailing there on her own with
+  the AI's `make-for` mode. Raider waves come out ahead of her. It succeeds if she makes port.
+- **Defence.** Raiders come for a town and lay their guns on its walls. The walls are an
+  unmoving stand-in hull, so ordinary gunnery and shot handle the attack, and the town has a
+  small battery of its own.
+  - **Winning:** sink every raider.
+  - **Losing:** if the walls fall, or nobody comes within six minutes, the town burns.
+  - A burned town is rebuilt after 4 minutes, and it is neither raided nor visited by
+    merchants while it is ashes.
+- **Rewards.** Each crew member gets the full reward, not a share: plunder into the hold, plus
+  **renown**, kept in D1 (`migrations/0002_renown.sql`). The amounts are:
+
+  | Mission | Plunder | Renown |
+  | --- | --- | --- |
+  | Bounty | 20 × need | need |
+  | Escort | 30 | 2 |
+  | Defence | 40 | 3 |
+
+  The leaderboard is ordered by renown.
+
+`npm run arena` checks each of these headless:
+- crews and alliance;
+- bounty armour;
+- an undefended town falling and being rebuilt;
+- two Frigates beating a raid off;
+- a merchant crossing the chart alone;
+- the scheduler never running two of a kind.
 
 ## Accounts
 
