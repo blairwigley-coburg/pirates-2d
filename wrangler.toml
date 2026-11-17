@@ -13,8 +13,8 @@ run_worker_first = ["/api/*", "/ws"]
 [[d1_databases]]
 binding = "DB"
 database_name = "pirates-2d"
-# Filled in by `wrangler d1 create pirates-2d`. Local dev does not need a real one.
-database_id = "00000000-0000-0000-0000-000000000000"
+# Created by `wrangler d1 create pirates-2d`.
+database_id = "cac2da64-d72d-4cce-a6a2-23963f1a6fd0"
 migrations_dir = "migrations"
 
 [[durable_objects.bindings]]
