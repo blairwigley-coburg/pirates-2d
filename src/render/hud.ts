@@ -10,7 +10,8 @@ import { UPGRADES_BY_ID, type Upgrade } from '../sim/upgrades'
 import { draughtDepth } from '../sim/terrain'
 import { outmatches, toKnots } from '../sim/stats'
 import { iconImage } from '../ui/icons'
-import { Minimap } from './minimap'
+import { Minimap, type Charted } from './minimap'
+import type { BoardRow, YouSnap } from '../net/protocol'
 import { Coach } from '../ui/coach'
 import type { Layout } from '../ui/layout'
 import { nextPurchase, payoutFor, type Ledger } from '../meta/career'
@@ -34,6 +35,21 @@ const PW = 236
 const IN = 14
 /** One row of a list: a 14px label beside a gauge. */
 const ROW = 22
+
+/** Who the guns are for: the player and everyone she may fire on. */
+interface Foes { player: Ship; enemies: Ship[] }
+
+/** The open sea, as the instruments need it. `SeaMirror` is one. */
+export type SeaInstruments = Foes & Charted & {
+  windAt(p: { x: number; y: number }): WindSample
+  /** This captain has a hull on the water. */
+  afloat: boolean
+  you: YouSnap
+  board: BoardRow[]
+  me: number
+  names: Map<number, string>
+  captainOf: Map<number, number>
+}
 
 export class Hud {
   private readonly minimap = new Minimap()
@@ -136,11 +152,126 @@ export class Hud {
   }
 
   /**
+   * The open sea's instruments: the same rose, sails and condition as a
+   * voyage, with the run's clock and cards swapped for who is out there and
+   * how they stand.
+   */
+  drawSea(sea: SeaInstruments, camera: Camera, connected: boolean, silent: boolean, menu: boolean) {
+    const ctx = this.ctx
+    const w = ctx.canvas.clientWidth
+    const h = ctx.canvas.clientHeight
+    const player = sea.player
+    this.shipName = null
+    const { top, compact, slim } = this.layout
+
+    this.drawNameTags(sea, camera, sea.afloat)
+    if (sea.afloat) {
+      this.drawGunArcs(sea, camera)
+      this.drawEnemyMarkers(sea, camera)
+    }
+
+    const localWind = sea.windAt(player.pos)
+    if (compact) {
+      this.drawRose(player, localWind, sea.wind.describe(localWind.strength), w - 80, top + 58, 44)
+      if (!slim) this.minimap.draw(ctx, sea, w - 20 - 150, top + 150, 150)
+    } else {
+      this.drawRose(player, localWind, sea.wind.describe(localWind.strength), w - 100, top + 80, 62)
+      this.minimap.draw(ctx, sea, w - 20 - 196, top + 196, 196)
+    }
+
+    if (sea.afloat) {
+      let col = top
+      col += this.drawSailIndicator(player, 20, col) + 10
+      if (!slim) col += this.drawReadouts(player, 20, col) + 10
+      col += this.drawCondition(player, 20, col) + 10
+      if (!compact) this.drawBroadsides(player, sea, 20, col)
+      this.drawShoalWarning(player)
+    }
+
+    this.drawBoard(sea, w, compact)
+
+    if (menu) return
+    if (!connected) this.banner('Reconnecting…', C('#ffd28a'), h / 2 - 40)
+    else if (!sea.afloat) {
+      const left = Math.ceil(sea.you.respawn)
+      this.banner(left > 0 ? 'Sunk' : 'Making sail', C('#ff7a6b'), h / 2 - 40)
+      if (left > 0) {
+        ctx.save()
+        ctx.font = F(16, true)
+        ctx.textAlign = 'center'
+        ctx.fillStyle = ui().panel.ink
+        plaque(ctx, `Raised again in ${left}s`, w / 2, h / 2 + 4)
+        ctx.restore()
+      }
+    }
+
+    if (!compact) {
+      ctx.save()
+      ctx.font = F(14)
+      ctx.textAlign = 'center'
+      ctx.fillStyle = C('rgba(255,255,255,0.8)')
+      plaque(ctx, `R — make port   ·   Enter — chat${silent ? '   ·   sound off — M' : ''}`, w / 2, h - 24)
+      ctx.restore()
+    }
+  }
+
+  /**
+   * Every captain's name over her hull, so a fight is between people. A
+   * rival's goes above the marker the guns draw for her (her hull and her
+   * three pools); your own, and everyone's while you wait to be raised,
+   * where that marker would be.
+   */
+  private drawNameTags(sea: SeaInstruments, camera: Camera, markers: boolean) {
+    const ctx = this.ctx
+    ctx.save()
+    ctx.font = F(14, true)
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'alphabetic'
+    for (const ship of sea.ships) {
+      if (ship.sunk) continue
+      const captain = sea.captainOf.get(ship.id) ?? 0
+      const name = sea.names.get(captain) ?? '?'
+      const s = camera.worldToScreen(ship.pos)
+      const mine = captain === sea.me
+      const lift = mine || !markers ? 56 : 74
+      seaLabel(ctx, name, s.x, s.y - lift, mine ? ui().menu.gold : ui().menu.text)
+    }
+    ctx.restore()
+  }
+
+  /** Who is out here, by ships sunk. */
+  private drawBoard(sea: SeaInstruments, w: number, compact: boolean) {
+    const ctx = this.ctx
+    const rows = sea.board.slice(0, compact ? 4 : 8)
+    const width = 280
+    const height = 40 + Math.max(1, rows.length) * 20 + 8
+    const x = w / 2 - width / 2
+    const y = this.layout.top
+    ctx.save()
+    panel(ctx, x, y, width, height)
+    ctx.textBaseline = 'top'
+    ctx.textAlign = 'left'
+    label(ctx, `THE OPEN SEA · ${sea.board.length}`, x + IN, y + 12)
+    ctx.font = F(14)
+    rows.forEach((row, i) => {
+      const ry = y + 38 + i * 20
+      const mine = row.id === sea.me
+      ctx.fillStyle = mine ? C('#ffd98a') : C('rgba(255,255,255,0.85)')
+      ctx.font = F(14, mine)
+      ctx.textAlign = 'left'
+      ctx.fillText(row.name, x + IN, ry)
+      ctx.textAlign = 'right'
+      ctx.fillText(`${row.sinkings} sunk · ${Math.floor(row.plunder)}`, x + width - IN, ry)
+    })
+    ctx.restore()
+  }
+
+  /**
    * Faint wedges showing where the guns bear, brightening when a target is
    * actually inside one. This teaches the broadside mechanic without a word of
    * tutorial: you can see the ship has to come abeam.
    */
-  private drawGunArcs(world: World, camera: Camera) {
+  private drawGunArcs(world: Foes, camera: Camera) {
     const player = world.player
     if (player.sunk) return
 
@@ -191,7 +322,7 @@ export class Hud {
   }
 
   /** Condition bars over visible enemies, direction arrows for the rest. */
-  private drawEnemyMarkers(world: World, camera: Camera) {
+  private drawEnemyMarkers(world: Foes, camera: Camera) {
     const ctx = this.ctx
     const w = ctx.canvas.clientWidth
     const h = ctx.canvas.clientHeight
@@ -611,7 +742,7 @@ export class Hud {
   }
 
   /** Reload state per battery, and whether anything is actually in the arc. */
-  private drawBroadsides(ship: Ship, world: World, x: number, y: number): number {
+  private drawBroadsides(ship: Ship, world: Foes, x: number, y: number): number {
     const ctx = this.ctx
     const arc = (T.gunArcDegrees * Math.PI) / 180
 

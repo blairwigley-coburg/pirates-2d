@@ -295,6 +295,8 @@ export interface CombatEvents {
   splashes: Splash[]
   /** Ships that went down this step. */
   sunk: Ship[]
+  /** Who fired the ball that sent each of them down, when someone is listening. */
+  kills?: { victim: Ship; by: number }[]
 }
 
 /** Advance every ball and resolve hits. */
@@ -349,7 +351,10 @@ export function stepProjectiles(
       events.splashes.push({
         pos: { ...p.pos }, life: 0.35, maxLife: 0.35, hit: true, victimFaction: ship.faction,
       })
-      if (wentDown) events.sunk.push(ship)
+      if (wentDown) {
+        events.sunk.push(ship)
+        events.kills?.push({ victim: ship, by: p.ownerId })
+      }
       struck = true
       break
     }
